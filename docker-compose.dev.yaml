@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # Frontend
+  frontend:
+    build:
+      context: ./chat-app
+      dockerfile: Dockerfile.dev
+    container_name: frontend-chat
+    ports:
+      - "4200:4200"
+    networks:
+      - dev-chatapp-net
+    # working_dir: /app
+    volumes:
+      - ./chat-app:/app
+      - /app/node_modules
+    # depends_on:
+    #   - backend-chat
+  # Database postgree
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-chat
+    # env này ưu tiên hơn
+    # environment:
+    #   POSTGRES_DB: 1
+    #   POSTGRES_USER: 2
+    #   POSTGRES_PASSWORD: 3
+    restart: unless-stopped
+    env_file:
+      - ./env/.env.dev
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - dev-chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatapp_db"]
+      interval: 5s # cứ 5s đo sức khỏe 1 lần
+      timeout: 5s # quá 5s coi như faild
+      retries: 5 #  thử lại 5 lần, nếu quá tính là faild
+      start_period: 10s # cho 10s đầu khởi động, không bắt check healthcheck ngay
+  # Kafka
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka-chat
+    networks:
+      - dev-chatapp-net
+    ports:
+      - "9092:9092"
+    restart: always
+    env_file:
+      - ./env/.env.dev
+  # RABBITMQ: Quản lý hàng đợi, có sẵn UI dashboard
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq-chat
+    restart: always
+    ports: 
+      - "5672:5672" # Port kết nối AMQP
+      - "15672:15672"  # Web Dashboard xem queue (user/pass mặc định: guest/guest)
+    networks:
+      - dev-chatapp-net
+  # Redis
+  redis:
+    image: redis:7-alpine # Dùng bản 7 alpine siêu nhẹ và ổn định
+    container_name: redis-chat
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data # Lưu dữ liệu redis vào volume
+    networks:
+      - dev-chatapp-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"] # Gửi lệnh PING, trả về PONG là đạt chuẩn!
+      interval: 5s 
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+  # Backend
+  backend:
+    container_name: backend-chat
+    restart: always
+    build:
+      context: ./ChatApp.Backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:8080" # Map port 3000 ngoài máy vào port 8080 trong container
+    networks:
+      - dev-chatapp-net
+    env_file:
+      - ./env/.env.dev
+    volumes:
+      - ./ChatApp.Backend:/app
+      - ~/.nuget/packages:/root/.nuget/packages
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      redis:
+        condition: service_healthy
+volumes:
+  postgres_data:
+  redis_data:
+networks:
+  dev-chatapp-net:
+    driver: bridge

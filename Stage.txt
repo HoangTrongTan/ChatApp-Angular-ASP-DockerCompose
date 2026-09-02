@@ -1,0 +1,36 @@
+[Step 1: Code & Test Local] 
+  ├── .NET 8 API kết nối DynamoDB
+  └── Angular gọi API (/api/goals)
+          │
+          ▼
+[Step 2: Đóng gói Docker]
+  ├── Build Image .NET 8 (Port 8080)
+  └── Build Image Angular Nginx (Port 80 + Config SPA Routing)
+          │
+          ▼
+[Step 3: Đẩy lên AWS ECR]
+  └── aws ecr get-login-password & docker push
+          │
+          ▼
+[Step 4: Cấu hình AWS ECS & IAM Role]
+  ├── Tạo bảng DynamoDB "Goals"
+  ├── Gắn quyền DynamoDB vào ECS Task Role (Bảo mật 100% không lộ Key)
+  └── Tạo 2 Task Definition cho FE & BE
+          │
+          ▼
+[Step 5: Dựng ALB & Ráp Toàn Bộ Lên Sóng]
+  ├── ALB Listener Rule: /api/* -> Backend Target Group (Port 8080)
+  └── ALB Listener Rule: /* -> Frontend Target Group (Port 80)
+
+1. File cấu hình nginx.conf cho Angular (để fix lỗi F5 404):
+Tạo file frontend/nginx.conf:
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html; # Không bao giờ bị 404 khi đổi route
+    }
+}
